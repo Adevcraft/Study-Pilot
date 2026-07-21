@@ -8,7 +8,6 @@ import {
   sendPasswordResetEmail, 
   onAuthStateChanged,
   updateProfile,
-  sendEmailVerification,
   User as FirebaseUser
 } from 'firebase/auth';
 import {
@@ -141,7 +140,6 @@ export type AuthCallbackUser = {
   email: string;
   displayName: string | null;
   uid: string;
-  emailVerified?: boolean;
 } | null;
 
 export type AuthSubscriber = (user: AuthCallbackUser) => void;
@@ -163,7 +161,7 @@ class SimulatedAuthEngine {
     }
   }
 
-  private getAccounts(): Record<string, { name: string; email: string; password?: string; emailVerified?: boolean }> {
+  private getAccounts(): Record<string, { name: string; email: string; password?: string }> {
     const data = localStorage.getItem(this.accountsKey);
     if (!data) {
       // Seed default demo student account if not exists
@@ -171,8 +169,7 @@ class SimulatedAuthEngine {
         'student@studypilot.ai': {
           name: 'Sarah Jenkins',
           email: 'student@studypilot.ai',
-          password: 'password123',
-          emailVerified: true
+          password: 'password123'
         }
       };
       localStorage.setItem(this.accountsKey, JSON.stringify(demoAccount));
@@ -181,7 +178,7 @@ class SimulatedAuthEngine {
     return JSON.parse(data);
   }
 
-  private saveAccounts(accounts: Record<string, { name: string; email: string; password?: string; emailVerified?: boolean }>) {
+  private saveAccounts(accounts: Record<string, { name: string; email: string; password?: string }>) {
     localStorage.setItem(this.accountsKey, JSON.stringify(accounts));
   }
 
@@ -193,13 +190,10 @@ class SimulatedAuthEngine {
     const account = accounts[activeEmail];
     if (!account) return null;
 
-    if (account.emailVerified === false) return null;
-
     return {
       email: account.email,
       displayName: account.name,
-      uid: `local_uid_${btoa(account.email)}`,
-      emailVerified: account.emailVerified ?? true
+      uid: `local_uid_${btoa(account.email)}`
     };
   }
 
@@ -233,18 +227,17 @@ class SimulatedAuthEngine {
     accounts[normalizedEmail] = {
       name: name.trim(),
       email: normalizedEmail,
-      password: password || 'defaultpassword',
-      emailVerified: false // Needs email verification
+      password: password || 'defaultpassword'
     };
 
     this.saveAccounts(accounts);
-    // We do NOT log them in automatically upon registration anymore as they need verification first.
+    localStorage.setItem(this.currentEmailKey, normalizedEmail);
+    this.notifySubscribers();
 
     return {
       email: normalizedEmail,
       displayName: name,
-      uid: `local_uid_${btoa(normalizedEmail)}`,
-      emailVerified: false
+      uid: `local_uid_${btoa(normalizedEmail)}`
     };
   }
 
@@ -267,20 +260,13 @@ class SimulatedAuthEngine {
       throw err;
     }
 
-    if (account.emailVerified === false) {
-      const err = new Error('Your email is not verified. Please verify your email first.');
-      (err as any).code = 'auth/email-not-verified';
-      throw err;
-    }
-
     localStorage.setItem(this.currentEmailKey, normalizedEmail);
     this.notifySubscribers();
 
     return {
       email: account.email,
       displayName: account.name,
-      uid: `local_uid_${btoa(account.email)}`,
-      emailVerified: account.emailVerified ?? true
+      uid: `local_uid_${btoa(account.email)}`
     };
   }
 
@@ -332,15 +318,10 @@ export const authAPI = {
       const userCredential = await createUserWithEmailAndPassword(liveAuth, email, password);
       // 2. Update display name profile
       await updateProfile(userCredential.user, { displayName: name });
-      // 3. Immediately send ONE email verification message
-      await sendEmailVerification(userCredential.user);
-      // 4. Immediately sign out
-      await signOut(liveAuth);
       return {
         email: userCredential.user.email || email,
         displayName: name,
-        uid: userCredential.user.uid,
-        emailVerified: false
+        uid: userCredential.user.uid
       };
     } else {
       return await simAuth.register(email, name, password);
@@ -354,17 +335,10 @@ export const authAPI = {
     if (liveAuth) {
       const userCredential = await signInWithEmailAndPassword(liveAuth, email, password);
       const fbUser = userCredential.user;
-      if (!fbUser.emailVerified) {
-        await signOut(liveAuth);
-        const err = new Error('Your email is not verified. Please verify your email first.');
-        (err as any).code = 'auth/email-not-verified';
-        throw err;
-      }
       return {
         email: fbUser.email || email,
         displayName: fbUser.displayName || email.split('@')[0],
-        uid: fbUser.uid,
-        emailVerified: true
+        uid: fbUser.uid
       };
     } else {
       return await simAuth.login(email, password);
@@ -399,7 +373,7 @@ export const authAPI = {
   async updateProfileName(name: string): Promise<void> {
     if (liveAuth) {
       if (liveAuth.currentUser) {
-        await updateProfile(liveAuth.currentUser, { displayName: name });
+         await updateProfile(liveAuth.currentUser, { displayName: name });
       }
     } else {
       await simAuth.updateDisplayName(name);
@@ -413,16 +387,10 @@ export const authAPI = {
     if (liveAuth) {
       return onAuthStateChanged(liveAuth, (fbUser) => {
         if (fbUser) {
-          if (!fbUser.emailVerified) {
-            signOut(liveAuth);
-            callback(null);
-            return;
-          }
           callback({
             email: fbUser.email || '',
             displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-            uid: fbUser.uid,
-            emailVerified: true
+            uid: fbUser.uid
           });
         } else {
           callback(null);

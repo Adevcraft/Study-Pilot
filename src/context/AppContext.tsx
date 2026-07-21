@@ -433,7 +433,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       users[user.email] = userProfile;
       localStorage.setItem('studypilot_users', JSON.stringify(users));
-      // Do not set current user as unverified users are logged out immediately and redirected to the login view.
+      setCurrentUser(userProfile);
     }
   };
 

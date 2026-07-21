@@ -99,8 +99,7 @@ export default function Auth() {
       setLoading(true);
       try {
         await signUp(name.trim(), trimmedEmail, password, institution.trim());
-        setSuccess('Registration successful. Please check your email and verify your account before logging in.');
-        setView('LOGIN');
+        setSuccess('Registration successful. Welcome to StudyPilot!');
         setPassword('');
         setConfirmPassword('');
       } catch (err) {
@@ -113,7 +112,7 @@ export default function Auth() {
       setLoading(true);
       try {
         await login(trimmedEmail, password);
-      } catch (err) {
+      } catch (err: any) {
         setError(getFriendlyErrorMessage(err));
       } finally {
         setLoading(false);
