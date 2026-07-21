@@ -1,0 +1,6 @@
+{
+  "name": "StudyPilot AI",
+  "description": "An AI-powered academic productivity platform for managing subjects, assignments, notes, timetables, and personalized AI tutor guidance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
