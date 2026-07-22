@@ -750,7 +750,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsAiLoading(true);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
 
     try {
       const subNames = subjects.map(s => s.name);
