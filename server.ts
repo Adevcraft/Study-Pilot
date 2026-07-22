@@ -57,14 +57,7 @@ function getGeminiClient(): { ai: GoogleGenAI; apiKey: string } {
     throw new Error('GEMINI_API_KEY_MISSING');
   }
 
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
-  });
+  const ai = new GoogleGenAI({ apiKey });
 
   return { ai, apiKey };
 }
@@ -109,7 +102,7 @@ app.post(['/api/gemini/tutor', '/gemini/tutor', '/tutor', '/api/tutor'], async (
     try {
       geminiObj = getGeminiClient();
     } catch (keyErr: any) {
-      console.error('[AI Tutor Key Error]:', keyErr.message);
+      console.error('[AI Tutor Key Error]:', keyErr);
       res.status(500).json({
         error: 'GEMINI_API_KEY is not configured on the server. Please set GEMINI_API_KEY or VITE_GEMINI_API_KEY in your Vercel Environment Variables.'
       });
@@ -140,32 +133,38 @@ app.post(['/api/gemini/tutor', '/gemini/tutor', '/tutor', '/api/tutor'], async (
 
     console.log(`[AI Tutor]: Processing prompt "${question.slice(0, 60)}..."`);
 
-    const geminiCall = ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: contents,
-      config: {
-        systemInstruction: systemInstruction,
+    let timer: any = null;
+    try {
+      const geminiCall = ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+        }
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000);
+      });
+
+      const response = await Promise.race([geminiCall, timeoutPromise]);
+
+      if (!response.text) {
+        console.warn('[AI Tutor]: Empty text returned by Gemini model');
+        res.status(500).json({ error: 'AI Tutor received an empty response from the AI model.' });
+        return;
       }
-    });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000)
-    );
-
-    const response = await Promise.race([geminiCall, timeoutPromise]);
-
-    if (!response.text) {
-      console.warn('[AI Tutor]: Empty text returned by Gemini model');
-      res.status(500).json({ error: 'AI Tutor received an empty response from the AI model.' });
-      return;
+      console.log('[AI Tutor Success]: Successfully returned response');
+      res.json({ text: response.text });
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-
-    console.log('[AI Tutor Success]: Successfully returned response');
-    res.json({ text: response.text });
   } catch (err: any) {
     console.error('[AI Tutor Endpoint Exception]:', err);
     res.status(500).json({
-      error: `AI Tutor failed: ${err.message || String(err)}`
+      error: `AI Tutor failed: ${err.message || String(err)}`,
+      details: err.stack || String(err)
     });
   }
 });
@@ -185,7 +184,7 @@ app.post(['/api/gemini/planner', '/gemini/planner', '/planner', '/api/planner'],
     try {
       geminiObj = getGeminiClient();
     } catch (keyErr: any) {
-      console.error('[AI Planner Key Error]:', keyErr.message);
+      console.error('[AI Planner Key Error]:', keyErr);
       res.status(500).json({
         error: 'GEMINI_API_KEY is not configured on the server. Please set GEMINI_API_KEY or VITE_GEMINI_API_KEY in your Vercel Environment Variables.'
       });
@@ -264,37 +263,43 @@ app.post(['/api/gemini/planner', '/gemini/planner', '/planner', '/api/planner'],
       required: ["weeklyPlan", "dailySchedule", "revisionPlan", "timeAllocation"]
     };
 
-    const geminiCall = ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      }
-    });
-
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000)
-    );
-
-    const response = await Promise.race([geminiCall, timeoutPromise]);
-    const jsonText = response.text || '';
-
-    let parsed;
+    let timer: any = null;
     try {
-      parsed = cleanAndParseJson(jsonText);
-    } catch (parseErr: any) {
-      console.error('[AI Planner JSON Error]: Failed to parse JSON response:', jsonText);
-      res.status(500).json({ error: `AI Planner returned invalid output format: ${parseErr.message}` });
-      return;
-    }
+      const geminiCall = ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
+        }
+      });
 
-    console.log('[AI Planner Success]: Successfully generated plan');
-    res.json(parsed);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000);
+      });
+
+      const response = await Promise.race([geminiCall, timeoutPromise]);
+      const jsonText = response.text || '';
+
+      let parsed;
+      try {
+        parsed = cleanAndParseJson(jsonText);
+      } catch (parseErr: any) {
+        console.error('[AI Planner JSON Error]: Failed to parse JSON response:', jsonText);
+        res.status(500).json({ error: `AI Planner returned invalid output format: ${parseErr.message}` });
+        return;
+      }
+
+      console.log('[AI Planner Success]: Successfully generated plan');
+      res.json(parsed);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   } catch (err: any) {
     console.error('[AI Planner Endpoint Exception]:', err);
     res.status(500).json({
-      error: `AI Planner failed: ${err.message || String(err)}`
+      error: `AI Planner failed: ${err.message || String(err)}`,
+      details: err.stack || String(err)
     });
   }
 });
@@ -308,7 +313,7 @@ app.post(['/api/gemini/advisor', '/gemini/advisor', '/advisor', '/api/advisor'],
     try {
       geminiObj = getGeminiClient();
     } catch (keyErr: any) {
-      console.error('[AI Advisor Key Error]:', keyErr.message);
+      console.error('[AI Advisor Key Error]:', keyErr);
       res.status(500).json({
         error: 'GEMINI_API_KEY is not configured on the server. Please set GEMINI_API_KEY or VITE_GEMINI_API_KEY in your Vercel Environment Variables.'
       });
@@ -333,30 +338,36 @@ app.post(['/api/gemini/advisor', '/gemini/advisor', '/advisor', '/api/advisor'],
       `- Recommend concrete study hour-allocations and prioritized steps for today.\n` +
       `- Give an encouraging, high-energy motivational sign-off. Use bullet points and bold headers for maximum visual appeal.`;
 
-    const geminiCall = ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: prompt,
-    });
+    let timer: any = null;
+    try {
+      const geminiCall = ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000)
-    );
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Gemini API call timed out after 30 seconds')), 30000);
+      });
 
-    const response = await Promise.race([geminiCall, timeoutPromise]);
-    const adviceText = response.text;
+      const response = await Promise.race([geminiCall, timeoutPromise]);
+      const adviceText = response.text;
 
-    if (!adviceText) {
-      console.warn('[AI Advisor]: Empty response returned from model');
-      res.status(500).json({ error: 'AI Advisor received an empty response from the AI model.' });
-      return;
+      if (!adviceText) {
+        console.warn('[AI Advisor]: Empty response returned from model');
+        res.status(500).json({ error: 'AI Advisor received an empty response from the AI model.' });
+        return;
+      }
+
+      console.log('[AI Advisor Success]: Successfully generated advisory report');
+      res.json({ advice: adviceText });
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-
-    console.log('[AI Advisor Success]: Successfully generated advisory report');
-    res.json({ advice: adviceText });
   } catch (err: any) {
     console.error('[AI Advisor Endpoint Exception]:', err);
     res.status(500).json({
-      error: `AI Advisor failed: ${err.message || String(err)}`
+      error: `AI Advisor failed: ${err.message || String(err)}`,
+      details: err.stack || String(err)
     });
   }
 });
