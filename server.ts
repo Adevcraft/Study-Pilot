@@ -57,7 +57,14 @@ function getGeminiClient(): { ai: GoogleGenAI; apiKey: string } {
     throw new Error('GEMINI_API_KEY_MISSING');
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 
   return { ai, apiKey };
 }
@@ -136,7 +143,7 @@ app.post(['/api/gemini/tutor', '/gemini/tutor', '/tutor', '/api/tutor'], async (
     let timer: any = null;
     try {
       const geminiCall = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
@@ -266,7 +273,7 @@ app.post(['/api/gemini/planner', '/gemini/planner', '/planner', '/api/planner'],
     let timer: any = null;
     try {
       const geminiCall = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -341,7 +348,7 @@ app.post(['/api/gemini/advisor', '/gemini/advisor', '/advisor', '/api/advisor'],
     let timer: any = null;
     try {
       const geminiCall = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: prompt,
       });
 
